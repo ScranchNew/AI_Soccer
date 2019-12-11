@@ -2,3 +2,4 @@ extlibs
 plugins
 protos
 reports
+*.pyc
