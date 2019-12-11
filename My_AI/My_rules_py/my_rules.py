@@ -722,18 +722,245 @@ class Component(ApplicationSession):
             yield self.call(u'aiwc.set_speed', args.key, robot_wheels)
             return
 
-        # Move the fuck away
-        def gtfo(self, id):
-            if id == 0:
-                self.set_target_position(id, -self.field[X]/2. * 0.9, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
-            elif id == 1:
-                self.set_target_position(id, -self.field[X]/2. * 0.7, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
-            elif id == 2:
-                self.set_target_position(id, -self.field[X]/2. * 0.9, self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
-            elif id == 3:
-                self.set_target_position(id, -self.field[X]/2. * 0.5, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+        # a basic goalkeeper rulbased algorithm
+        def goalkeeper(self, id):
+            # default desired position
+            x = (-self.field[X] / 2) + (self.robot_size[id] / 2) + 0.05
+            y = max(min(self.cur_ball[Y], (self.goal[Y] / 2 - self.robot_size[id] / 2)),
+                    -self.goal[Y] / 2 + self.robot_size[id] / 2)
+
+            # if the robot is inside the goal, try to get out
+            if (self.cur_posture[id][X] < -self.field[X] / 2):
+                if (self.cur_posture[id][Y] < 0):
+                    self.set_target_position(id, x, self.cur_posture[id][Y] + 0.2, 1.4, 5.0, 0.4, False)
+                else:
+                    self.set_target_position(id, x, self.cur_posture[id][Y] - 0.2, 1.4, 5.0, 0.4, False)
+            # if the goalkeeper is outside the penalty area
+            elif (not self.in_penalty_area(self.cur_posture[id], MY_TEAM)):
+                # return to the desired position
+                self.set_target_position(id, x, y, 1.4, 5.0, 0.4, True)
+            # if the goalkeeper is inside the penalty area
             else:
-                self.set_target_position(id, -self.field[X]/2. * 0.7, self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                # if the ball is inside the penalty area
+                if (self.in_penalty_area(self.cur_ball, MY_TEAM)):
+                    # if the ball is behind the goalkeeper
+                    if (self.cur_ball[X] < self.cur_posture[id][X]):
+                        # if the ball is not blocking the goalkeeper's path
+                        if (abs(self.cur_ball[Y] - self.cur_posture[id][Y]) > 2 * self.robot_size[id]):
+                            # try to get ahead of the ball
+                            self.set_target_position(id, self.cur_ball[X] - self.robot_size[id], self.cur_posture[id][Y], 1.4, 5.0,
+                                          0.4, False)
+                        else:
+                            # just give up and try not to make a suicidal goal
+                            self.angle(id, math.pi / 2)
+                    # if the ball is ahead of the goalkeeper
+                    else:
+                        desired_th = self.direction_angle(id, self.cur_ball[X], self.cur_ball[Y])
+                        rad_diff = helper.trim_radian(desired_th - self.cur_posture[id][TH])
+                        # if the robot direction is too away from the ball direction
+                        if (rad_diff > math.pi / 3):
+                            # give up kicking the ball and block the goalpost
+                            self.set_target_position(id, x, y, 1.4, 5.0, 0.4, False)
+                        else:
+                            # try to kick the ball away from the goal
+                            self.set_target_position(id, self.cur_ball[X], self.cur_ball[Y], 1.4, 3.0, 0.8, True)
+                # if the ball is not in the penalty area
+                else:
+                    # if the ball is within alert range and y position is not too different
+                    if (self.cur_ball[X] < -self.field[X] / 2 + 1.5 * self.penalty_area[X] and abs(
+                            self.cur_ball[Y]) < 1.5 * self.penalty_area[Y] / 2 and abs(
+                            self.cur_ball[Y] - self.cur_posture[id][Y]) < 0.2):
+                        self.face_specific_position(id, self.cur_ball[X], self.cur_ball[Y])
+                    # otherwise
+                    else:
+                        self.set_target_position(id, x, y, 1.4, 5.0, 0.4, True)
+
+        # a basic defender rulebased algorithm
+        def defender(self, id):
+            # if the robot is inside the goal, try to get out
+            if (self.cur_posture[id][X] < -self.field[X] / 2):
+                if (self.cur_posture[id][Y] < 0):
+                    self.set_target_position(id, -0.7 * self.field[X] / 2, self.cur_posture[id][Y] + 0.2, 1.4, 3.5, 0.6, False)
+                else:
+                    self.set_target_position(id, -0.7 * self.field[X] / 2, self.cur_posture[id][Y] - 0.2, 1.4, 3.5, 0.6, False)
+                return
+            # the defender may try to shoot if condition meets
+            if (id == self.def_idx and self.shoot_chance(id) and self.cur_ball[X] < 0.3 * self.field[X] / 2):
+                self.set_target_position(id, self.cur_ball[X], self.cur_ball[Y], 1.4, 5.0, 0.4, True)
+                return
+
+            # if this defender is closer to the ball than the other defender
+            if (id == self.def_idx):
+                # ball is on our side
+                if (self.cur_ball[X] < 0):
+                    # if the robot can push the ball toward opponent's side, do it
+                    if (self.cur_posture[id][X] < self.cur_ball[X] - self.ball_radius):
+                        self.set_target_position(id, self.cur_ball[X], self.cur_ball[Y], 1.4, 5.0, 0.4, True)
+                    else:
+                        # otherwise go behind the ball
+                        if (abs(self.cur_ball[Y] - self.cur_posture[id][Y]) > 0.3):
+                            self.set_target_position(id, max(self.cur_ball[X] - 0.5, -self.field[X] / 2 + self.robot_size[id] / 2),
+                                          self.cur_ball[Y], 1.4, 3.5, 0.6, False)
+                        else:
+                            self.set_target_position(id, max(self.cur_ball[X] - 0.5, -self.field[X] / 2 + self.robot_size[id] / 2),
+                                          self.cur_posture[id][Y], 1.4, 3.5, 0.6, False)
+                else:
+                    self.set_target_position(id, -0.7 * self.field[X] / 2, self.cur_ball[Y], 1.4, 3.5, 0.4, False)
+            # if this defender is not closer to the ball than the other defender
+            else:
+                # ball is on our side
+                if (self.cur_ball[X] < 0):
+                    # ball is on our left
+                    if (self.cur_ball[Y] > self.goal[Y] / 2 + 0.15):
+                        self.set_target_position(id,
+                                      max(self.cur_ball[X] - 0.5, -self.field[X] / 2 + self.robot_size[id] / 2 + 0.1),
+                                      self.goal[Y] / 2 + 0.15, 1.4, 3.5, 0.4, False)
+                    # ball is on our right
+                    elif (self.cur_ball[Y] < -self.goal[Y] / 2 - 0.15):
+                        self.set_target_position(id,
+                                      max(self.cur_ball[X] - 0.5, -self.field[X] / 2 + self.robot_size[id] / 2 + 0.1),
+                                      -self.goal[Y] / 2 - 0.15, 1.4, 3.5, 0.4, False)
+                    # ball is in center
+                    else:
+                        self.set_target_position(id,
+                                      max(self.cur_ball[X] - 0.5, -self.field[X] / 2 + self.robot_size[id] / 2 + 0.1),
+                                      self.cur_ball[Y], 1.4, 3.5, 0.4, False)
+                else:
+                    # ball is on right side
+                    if (self.cur_ball[Y] < 0):
+                        self.set_target_position(id, -0.7 * self.field[X] / 2,
+                                      min(self.cur_ball[Y] + 0.5, self.field[Y] / 2 - self.robot_size[id] / 2), 1.4,
+                                      3.5, 0.4, False)
+                    # ball is on left side
+                    else:
+                        self.set_target_position(id, -0.7 * self.field[X] / 2,
+                                      max(self.cur_ball[Y] - 0.5, -self.field[Y] / 2 + self.robot_size[id] / 2), 1.4,
+                                      3.5, 0.4, False)
+
+        # a basic forward rulebased algorithm
+        def forward(self, id):
+            # if the robot is blocking the ball's path toward opponent side
+            if (self.cur_ball[X] > -0.3 * self.field[X] / 2 and self.cur_ball[X] < 0.3 * self.field[X] / 2 and
+                    self.cur_posture[id][X] > self.cur_ball[X] + 0.1 and abs(
+                            self.cur_posture[id][Y] - self.cur_ball[Y]) < 0.3):
+                if (self.cur_ball[Y] < 0):
+                    self.set_target_position(id, self.cur_posture[id][X] - 0.25, self.cur_ball[Y] + 0.75, 1.4, 3.0, 0.8, False)
+                else:
+                    self.set_target_position(id, self.cur_posture[id][X] - 0.25, self.cur_ball[Y] - 0.75, 1.4, 3.0, 0.8, False)
+                return
+
+            # if the robot can shoot from current position
+            if (id == self.atk_idx and self.shoot_chance(id)):
+                pred_ball = self.predict_ball_location(2)
+                self.set_target_position(id, pred_ball[X], pred_ball[Y], 1.4, 5.0, 0.4, True)
+                return
+
+            # if the ball is coming toward the robot, seek for shoot chance
+            if (id == self.atk_idx and self.ball_coming_toward_robot(id)):
+                dx = self.cur_ball[X] - self.prev_ball[X]
+                dy = self.cur_ball[Y] - self.prev_ball[Y]
+                pred_x = (self.cur_posture[id][Y] - self.cur_ball[Y]) * dx / dy + self.cur_ball[X]
+                steps = (self.cur_posture[id][Y] - self.cur_ball[Y]) / dy
+
+                # if the ball will be located in front of the robot
+                if (pred_x > self.cur_posture[id][X]):
+                    pred_dist = pred_x - self.cur_posture[id][X]
+                    # if the predicted ball location is close enough
+                    if (pred_dist > 0.1 and pred_dist < 0.3 and steps < 10):
+                        # find the direction towards the opponent goal and look toward it
+                        goal_angle = self.direction_angle(id, self.field[X] / 2, 0)
+                        self.angle(id, goal_angle)
+                        return
+
+            # if this forward is closer to the ball than the other forward
+            if (id == self.atk_idx):
+                if (self.cur_ball[X] > -0.3 * self.field[X] / 2):
+                    # if the robot can push the ball toward opponent's side, do it
+                    if (self.cur_posture[id][X] < self.cur_ball[X] - self.ball_radius):
+                        self.set_target_position(id, self.cur_ball[X], self.cur_ball[Y], 1.4, 5.0, 0.4, True)
+                    else:
+                        # otherwise go behind the ball
+                        if (abs(self.cur_ball[Y] - self.cur_posture[id][Y]) > 0.3):
+                            self.set_target_position(id, self.cur_ball[X] - 0.2, self.cur_ball[Y], 1.4, 3.5, 0.6, False)
+                        else:
+                            self.set_target_position(id, self.cur_ball[X] - 0.2, self.cur_posture[id][Y], 1.4, 3.5, 0.6, False)
+                else:
+                    self.set_target_position(id, -0.1 * self.field[X] / 2, self.cur_ball[Y], 1.4, 3.5, 0.4, False)
+            # if this forward is not closer to the ball than the other forward
+            else:
+                if (self.cur_ball[X] > -0.3 * self.field[X] / 2):
+                    # ball is on our right
+                    if (self.cur_ball[Y] < 0):
+                        self.set_target_position(id, self.cur_ball[X] - 0.25, self.goal[Y] / 2, 1.4, 3.5, 0.4, False)
+                    # ball is on our left
+                    else:
+                        self.set_target_position(id, self.cur_ball[X] - 0.25, -self.goal[Y] / 2, 1.4, 3.5, 0.4, False)
+                else:
+                    # ball is on right side
+                    if (self.cur_ball[Y] < 0):
+                        self.set_target_position(id, -0.1 * self.field[X] / 2,
+                                      min(-self.cur_ball[Y] - 0.5, self.field[Y] / 2 - self.robot_size[id] / 2), 1.4,
+                                      3.5, 0.4, False)
+                    # ball is on left side
+                    else:
+                        self.set_target_position(id, -0.1 * self.field[X] / 2,
+                                      max(-self.cur_ball[Y] + 0.5, -self.field[Y] / 2 + self.robot_size[id] / 2), 1.4,
+                                      3.5, 0.4, False)
+
+        def default_rulebased(self, player_list):
+            for p in player_list:
+                # Add actions instead of default rulebase(goalkeeper, defender, forward) actions
+                # If this robot is stuck at field sides, move forward the center
+                if pow(self.prev_posture[p][X] - self.cur_posture[p][X],2) + pow(self.prev_posture[p][Y] - self.cur_posture[p][Y],2) < 5e-6:
+                    if self.cur_posture[p][Y] > 0 :
+                        self.set_target_position(p, 0, 0, 1.4, 3.5, 0.4, False)
+                        continue
+                if p == 0:
+                    goalkeeper(self, 0)
+                    continue
+                if p == 1 or p == 2:
+                    defender(self, p)
+                    continue
+                if p == 3 or p == 4:
+                    forward(self, p)
+                    continue
+
+        def passing_play(self, player_list):
+            def find_active_player(self, ids):
+                _ids = []
+                for i in ids:
+                    if self.cur_posture[i][ACTIVE] :
+                        _ids.append(i)
+                return _ids
+            # select only alive player
+            _player_list = find_active_player(self, player_list)
+            self.cur_count = round(self.received_frame.time * 20)  # count = 50 ms
+
+            if self.end_count == self.cur_count :
+                self.end_count = 0
+
+            if self.reset_condition() :
+                self.sender = None
+                self.sender_touch = False
+                self.receiver = None
+            # check if sender exists
+            if self.set_sender_condition() :
+                self.sender = self.set_sender( _player_list)
+            # check if receiver exists
+            if self.set_receiver_condition():
+                self.receiver = self.set_receiver(_player_list)
+
+            if (self.sender != None and self.receiver != None):
+                self.pass_ball()
+                # if player is sender
+                if self.sender in _player_list:
+                    _player_list.remove(self.sender)
+                # if player is receiver
+                if self.receiver in _player_list:
+                    _player_list.remove(self.receiver)
+
+            default_rulebased(self, _player_list)
+            return
 
         # initiate empty frame
         if (self.end_of_frame):
@@ -777,10 +1004,65 @@ class Component(ApplicationSession):
             self.get_coord()
             self.find_closest_robot()
 
-            for i in range(5):
-                gtfo(self, i)
-            set_wheel(self, self.wheels)
+            if (self.received_frame.reset_reason == EPISODE_END):
+                # EPISODE_END is sent instead of GAME_END when 'repeat' option is set to 'true'
+                # to mark the end of episode
+                # you can reinitialize the parameters, count the number of episodes done, etc. here
 
+                # this example does not do anything at episode end
+                pass
+
+            if (self.received_frame.reset_reason == HALFTIME):
+                # halftime is met - from next frame, self.received_frame.half_passed will be set to True
+                # although the simulation switches sides,
+                # coordinates and images given to your AI soccer algorithm will stay the same
+                # that your team is red and located on left side whether it is 1st half or 2nd half
+
+                # this example does not do anything at halftime
+                pass
+
+            ##############################################################################
+            if (self.received_frame.game_state == STATE_DEFAULT):
+                # robot functions in STATE_DEFAULT
+                # goalkeeper simply executes goalkeeper algorithm on its own
+                goalkeeper(self, 0)
+
+                # defenders and forwards can pass ball to each other if necessary
+                passing_play(self, [1, 2, 3, 4])
+                set_wheel(self, self.wheels)
+            ##############################################################################
+            elif (self.received_frame.game_state == STATE_KICKOFF):
+                #  if the ball belongs to my team, initiate kickoff
+                if (self.received_frame.ball_ownership):
+                    self.set_target_position(4, 0, 0, 1.4, 3.0, 0.4, False)
+
+                set_wheel(self, self.wheels)
+            ##############################################################################
+            elif (self.received_frame.game_state == STATE_GOALKICK):
+                # if the ball belongs to my team,
+                # drive the goalkeeper to kick the ball
+                if (self.received_frame.ball_ownership):
+                    self.set_wheel_velocity(0, self.max_linear_velocity[0], self.max_linear_velocity[0], True)
+
+                set_wheel(self, self.wheels)
+            ##############################################################################
+            elif (self.received_frame.game_state == STATE_CORNERKICK):
+                # just play as simple as possible
+                goalkeeper(self, 0)
+                defender(self, 1)
+                defender(self, 2)
+                forward(self, 3)
+                forward(self, 4)
+
+                set_wheel(self, self.wheels)
+            ##############################################################################
+            elif (self.received_frame.game_state == STATE_PENALTYKICK):
+                # if the ball belongs to my team,
+                # drive the forward to kick the ball
+                if (self.received_frame.ball_ownership):
+                    self.set_wheel_velocity(4, self.max_linear_velocity[0], self.max_linear_velocity[0], True)
+
+                set_wheel(self, self.wheels)
             ##############################################################################
             if (self.received_frame.reset_reason == GAME_END):
                 # (virtual finish() in random_walk.cpp)
