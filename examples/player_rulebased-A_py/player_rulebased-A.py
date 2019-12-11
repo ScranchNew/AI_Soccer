@@ -199,8 +199,7 @@ class Component(ApplicationSession):
         # otherwise, the velocity above the limit will be set to the max velocity by the simulation program
         # if that happens, the velocity ratio between left and right wheels will be changed that the robot may not execute
         # turning actions correctly.
-        if (abs(left_wheel) > self.max_linear_velocity[id] or abs(right_wheel) > self.max_linear_velocity[
-            id] or max_velocity):
+        if (abs(left_wheel) > self.max_linear_velocity[id] or abs(right_wheel) > self.max_linear_velocity[id] or max_velocity):
             if (abs(left_wheel) > abs(right_wheel)):
                 multiplier = self.max_linear_velocity[id] / abs(left_wheel)
             else:
