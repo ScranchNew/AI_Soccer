@@ -55,14 +55,19 @@ class Received_Image(object):
         self.resolution = resolution
         self.colorChannels = colorChannels
         # need to initialize the matrix at timestep 0
-        self.ImageBuffer = np.zeros((resolution[1], resolution[0], colorChannels))  # rows, columns, colorchannels
+        # rows, columns, colorchannels
+        self.ImageBuffer = np.zeros(
+            (resolution[1], resolution[0], colorChannels))
 
     def update_image(self, received_parts):
         self.received_parts = received_parts
         for i in range(0, len(received_parts)):
-            dec_msg = base64.b64decode(self.received_parts[i].b64, '-_')  # decode the base64 message
-            np_msg = np.fromstring(dec_msg, dtype=np.uint8)  # convert byte array to numpy array
-            reshaped_msg = np_msg.reshape((self.received_parts[i].height, self.received_parts[i].width, 3))
+            # decode the base64 message
+            dec_msg = base64.b64decode(self.received_parts[i].b64, '-_')
+            # convert byte array to numpy array
+            np_msg = np.fromstring(dec_msg, dtype=np.uint8)
+            reshaped_msg = np_msg.reshape(
+                (self.received_parts[i].height, self.received_parts[i].width, 3))
             for j in range(0, self.received_parts[i].height):  # y axis
                 for k in range(0, self.received_parts[i].width):  # x axis
                     self.ImageBuffer[j + self.received_parts[i].y, k + self.received_parts[i].x, 0] = reshaped_msg[
@@ -158,13 +163,13 @@ class Component(ApplicationSession):
             self.end_count = 0
             self.prev_sender = None
             self.sender = None
-            self.touch = [False,False,False,False,False]
+            self.touch = [False, False, False, False, False]
             self.prev_receiver = None
             self.receiver = None
             self.def_idx = 0
             self.atk_idx = 0
             self.closest_order = []
-            self.player_state = [None,None,None,None,None]
+            self.player_state = [None, None, None, None, None]
 
             self.wheels = [0 for _ in range(10)]
             return
@@ -221,7 +226,8 @@ class Component(ApplicationSession):
         d_e = math.sqrt(math.pow(dx, 2) + math.pow(dy, 2))
 
         # calculate how much the direction is off
-        desired_th = (math.pi / 2) if (dx == 0 and dy == 0) else math.atan2(dy, dx)
+        desired_th = (math.pi / 2) if (dx == 0 and dy ==
+                                       0) else math.atan2(dy, dx)
         d_th = desired_th - self.cur_posture[id][TH]
         while (d_th > math.pi):
             d_th -= 2 * math.pi
@@ -253,7 +259,8 @@ class Component(ApplicationSession):
         # if the direction is off by more than 85 degrees,
         # make a turn first instead of start moving toward the target
         if (abs(d_th) > helper.d2r(85)):
-            self.set_wheel_velocity(id, -mult_ang * d_th, mult_ang * d_th, False)
+            self.set_wheel_velocity(
+                id, -mult_ang * d_th, mult_ang * d_th, False)
         # otherwise
         else:
             # scale the angular velocity further down if the direction is off by less than 40 degrees
@@ -273,9 +280,9 @@ class Component(ApplicationSession):
             # where at least one wheel is operating at maximum velocity
             self.set_wheel_velocity(id,
                                     sign * scale * (mult_lin * (
-                                                1 / (1 + math.exp(-3 * d_e)) - damping) - mult_ang * ka * d_th),
+                                        1 / (1 + math.exp(-3 * d_e)) - damping) - mult_ang * ka * d_th),
                                     sign * scale * (mult_lin * (
-                                                1 / (1 + math.exp(-3 * d_e)) - damping) + mult_ang * ka * d_th),
+                                        1 / (1 + math.exp(-3 * d_e)) - damping) + mult_ang * ka * d_th),
                                     max_velocity)
 
     # copy coordinates from frames to different variables just for convenience
@@ -298,7 +305,7 @@ class Component(ApplicationSession):
 
         for i in [1, 2]:
             measured_dist = helper.dist(self.cur_ball[X], self.cur_posture[i][X], self.cur_ball[Y],
-                                                self.cur_posture[i][Y])
+                                        self.cur_posture[i][Y])
             all_dist.append(measured_dist)
             if (measured_dist < min_dist):
                 min_dist = measured_dist
@@ -314,7 +321,7 @@ class Component(ApplicationSession):
 
         for i in [3, 4]:
             measured_dist = helper.dist(self.cur_ball[X], self.cur_posture[i][X], self.cur_ball[Y],
-                                                self.cur_posture[i][Y])
+                                        self.cur_posture[i][Y])
             all_dist.append(measured_dist)
             if (measured_dist < min_dist):
                 min_dist = measured_dist
@@ -337,7 +344,8 @@ class Component(ApplicationSession):
         dx = x - self.cur_posture[id][X]
         dy = y - self.cur_posture[id][Y]
 
-        desired_th = (math.pi / 2) if (dx == 0 and dy == 0) else math.atan2(dy, dx)
+        desired_th = (math.pi / 2) if (dx == 0 and dy ==
+                                       0) else math.atan2(dy, dx)
 
         self.angle(id, desired_th)
 
@@ -377,8 +385,10 @@ class Component(ApplicationSession):
 
     # check if the ball is coming toward the robot
     def ball_coming_toward_robot(self, id):
-        x_dir = abs(self.cur_posture[id][X] - self.prev_ball[X]) > abs(self.cur_posture[id][X] - self.cur_ball[X])
-        y_dir = abs(self.cur_posture[id][Y] - self.prev_ball[Y]) > abs(self.cur_posture[id][Y] - self.cur_ball[Y])
+        x_dir = abs(self.cur_posture[id][X] - self.prev_ball[X]
+                    ) > abs(self.cur_posture[id][X] - self.cur_ball[X])
+        y_dir = abs(self.cur_posture[id][Y] - self.prev_ball[Y]
+                    ) > abs(self.cur_posture[id][Y] - self.cur_ball[Y])
 
         # ball is coming closer
         if (x_dir and y_dir):
@@ -396,48 +406,53 @@ class Component(ApplicationSession):
             return False
 
         # if the robot->ball direction aligns with opponent's goal, the robot can shoot
-        y = (self.field[X] / 2 - self.cur_ball[X]) * dy / dx + self.cur_posture[id][Y]
+        y = (self.field[X] / 2 - self.cur_ball[X]) * \
+            dy / dx + self.cur_posture[id][Y]
         if (abs(y) < self.goal[Y] / 2):
             return True
         else:
             return False
 
     # check if sender/receiver pair should be reset
-    def reset_condition(self) :
+    def reset_condition(self):
         # if the time is over, setting is reset
-        if (self.end_count > 0 and self.end_count - self.cur_count < 0) :
+        if (self.end_count > 0 and self.end_count - self.cur_count < 0):
             return True
 
         # if there is no sender and receiver is not in shoot chance, setting is cleared
-        if not self.sender is None :
-            if not self.shoot_chance(self.sender) :
+        if not self.sender is None:
+            if not self.shoot_chance(self.sender):
                 return True
         return False
 
     # check if a sender can be selected
-    def set_sender_condition(self) :
-        for i in range(1,5) :
+    def set_sender_condition(self):
+        for i in range(1, 5):
             # if this robot is near the ball, it will be a sender candidate
-            dist = helper.dist(self.cur_posture[i][X], self.cur_ball[X], self.cur_posture[i][Y], self.cur_ball[Y])
-            if dist < 0.5 and self.cur_posture[i][ACTIVE]: return True
+            dist = helper.dist(
+                self.cur_posture[i][X], self.cur_ball[X], self.cur_posture[i][Y], self.cur_ball[Y])
+            if dist < 0.5 and self.cur_posture[i][ACTIVE]:
+                return True
         return False
 
     # check if a receiver should be selected
-    def set_receiver_condition(self) :
+    def set_receiver_condition(self):
         # if a sender exists, any other robots can be receiver candidates
-        if self.sender != None and self.receiver == None: return True
+        if self.sender != None and self.receiver == None:
+            return True
         return False
 
     # select a sender
     def set_sender(self, _player_list):
         distance_list = []
-        for sender in _player_list :
+        for sender in _player_list:
             predict_ball = self.predict_ball_location(3)
-            ball_distance = helper.dist(predict_ball[X], self.cur_posture[sender][X], predict_ball[Y], self.cur_posture[sender][Y])
+            ball_distance = helper.dist(
+                predict_ball[X], self.cur_posture[sender][X], predict_ball[Y], self.cur_posture[sender][Y])
             distance_list.append(ball_distance)
 
         # if the distance between ball and sender is less than 1, choose the closest robot as the sender
-        if min(distance_list) < 1.0 :
+        if min(distance_list) < 1.0:
             return distance_list.index(min(distance_list)) + 1
 
         # otherwise, there is no sender
@@ -446,38 +461,41 @@ class Component(ApplicationSession):
     # select a receiver
     def set_receiver(self, _player_list):
         receiver_op_dist_list = []
-        for receiver in _player_list :
+        for receiver in _player_list:
             temp_receiver_op_dist_list = []
             # the sender is not a receiver candidate
-            if receiver == self.sender :
+            if receiver == self.sender:
                 receiver_op_dist_list.append(999)
                 continue
 
             # the distance between the robot and opponents
-            for op in range(1, 5) : #[1,2,3,4]
-                op_distance = helper.dist(self.cur_posture[receiver][X], self.cur_posture_op[op][X], self.cur_posture[receiver][Y], self.cur_posture_op[op][Y])
+            for op in range(1, 5):  # [1,2,3,4]
+                op_distance = helper.dist(
+                    self.cur_posture[receiver][X], self.cur_posture_op[op][X], self.cur_posture[receiver][Y], self.cur_posture_op[op][Y])
                 temp_receiver_op_dist_list.append(op_distance)
 
             # save the shortest distance between this robot and one of opponents
             receiver_op_dist_list.append(min(temp_receiver_op_dist_list))
 
         receiver_ball_list = []
-        for r in receiver_op_dist_list :
+        for r in receiver_op_dist_list:
             # if the minimum distance between player and opponent's player is less than 0.5, this robot cannot be receiver
             if r < 0.5 or r == 999:
                 receiver_ball_list.append(999)
                 continue
             id = receiver_op_dist_list.index(r) + 1
-            receiver_ball_distance = helper.dist(self.cur_ball[X], self.cur_posture[id][X], self.cur_ball[Y], self.cur_posture[id][Y])
+            receiver_ball_distance = helper.dist(
+                self.cur_ball[X], self.cur_posture[id][X], self.cur_ball[Y], self.cur_posture[id][Y])
             receiver_ball_list.append(receiver_ball_distance)
 
-        if min(receiver_ball_list) < 999 :
+        if min(receiver_ball_list) < 999:
             min_id = receiver_ball_list.index(min(receiver_ball_list)) + 1
             return min_id
         return None
 
     def pass_ball(self):
-        if self.prev_sender == self.receiver or self.prev_receiver == self.sender :# and not None in [self.prev_sender, self.prev_receiver, self.sender, self.receiver] :
+        # and not None in [self.prev_sender, self.prev_receiver, self.sender, self.receiver] :
+        if self.prev_sender == self.receiver or self.prev_receiver == self.sender:
             self.sender = self.prev_sender
             self.receiver = self.prev_receiver
 
@@ -487,198 +505,219 @@ class Component(ApplicationSession):
         self.prev_sender = self.sender
         self.prev_receiver = self.receiver
 
-    def send_ball(self) :
-        if self.sender == None :
+    def send_ball(self):
+        if self.sender == None:
             return
 
-        goal_dist = helper.dist(4.0, self.cur_posture[self.sender][X], 0, self.cur_posture[self.sender][Y])
+        goal_dist = helper.dist(
+            4.0, self.cur_posture[self.sender][X], 0, self.cur_posture[self.sender][Y])
         # if the sender has a shoot chance, it tries to shoot
-        if self.shoot_chance(self.sender) :
+        if self.shoot_chance(self.sender):
             if goal_dist > 0.3 * self.field[X] / 2:
-                self.actions(self.sender, 'dribble',refine=True)
+                self.actions(self.sender, 'dribble', refine=True)
                 return
-            else :
+            else:
                 self.actions(self.sender, 'kick')
                 return
 
         # if the receiver exists, get the distance between the sender and the receiver
         sender_receiver_dist = None
-        if not self.receiver == None :
-            sender_receiver_dist = helper.dist(self.cur_posture[self.sender][X], self.cur_posture[self.receiver][X],self.cur_posture[self.sender][Y], self.cur_posture[self.receiver][Y])
+        if not self.receiver == None:
+            sender_receiver_dist = helper.dist(
+                self.cur_posture[self.sender][X], self.cur_posture[self.receiver][X], self.cur_posture[self.sender][Y], self.cur_posture[self.receiver][Y])
 
         # if the sender is close to the receiver, the sender kicks the ball
-        if not sender_receiver_dist == None :
+        if not sender_receiver_dist == None:
             if sender_receiver_dist < 0.3 and not self.cur_posture[self.receiver][TOUCH]:
                 self.actions(self.sender, 'kick')
                 return
 
-        ift, theta_diff = self.is_facing_target(self.sender, self.cur_ball[X], self.cur_ball[Y])
-        if not ift :
+        ift, theta_diff = self.is_facing_target(
+            self.sender, self.cur_ball[X], self.cur_ball[Y])
+        if not ift:
             # after the sender kicks, it stops
-            if theta_diff > math.pi * 3/4 :
+            if theta_diff > math.pi * 3/4:
                 self.actions(self.sender, None)
                 return
-            else :
-                self.actions(self.sender, 'follow',refine=True)
+            else:
+                self.actions(self.sender, 'follow', refine=True)
                 return
 
         # if the ball is in front of the sender and sender is moving backward
-        if self.cur_posture[self.sender][X] < - 0.8 * self.field[X] / 2 :
-            if self.cur_posture[self.sender][X] - self.prev_posture[self.sender][X] < 0 :
+        if self.cur_posture[self.sender][X] < - 0.8 * self.field[X] / 2:
+            if self.cur_posture[self.sender][X] - self.prev_posture[self.sender][X] < 0:
                 self.actions(self.sender, 'backward')
 
-        self.actions(self.sender, 'dribble',refine=True)
+        self.actions(self.sender, 'dribble', refine=True)
         return
 
-    def receive_ball(self) :
+    def receive_ball(self):
         # if receiver does not exist, do nothing
-        if self.receiver == None :
+        if self.receiver == None:
             return
 
-        goal_dist = helper.dist(4.0, self.cur_posture[self.receiver][X], 0, self.cur_posture[self.receiver][Y])
+        goal_dist = helper.dist(
+            4.0, self.cur_posture[self.receiver][X], 0, self.cur_posture[self.receiver][Y])
         # if sender is in shoot chance, receiver does nothing(reset)
-        if self.shoot_chance(self.sender) :
-            self.actions(self.receiver,None)
+        if self.shoot_chance(self.sender):
+            self.actions(self.receiver, None)
             return
         # if receiver is in shoot chance, receiver try to shoot
-        if self.shoot_chance(self.receiver) :
+        if self.shoot_chance(self.receiver):
             if goal_dist > 0.3 * self.field[X] / 2:
-                self.actions(self.receiver, 'dribble',refine=True)
+                self.actions(self.receiver, 'dribble', refine=True)
                 return
-            else :
+            else:
                 self.actions(self.receiver, 'kick')
                 return
 
         # if sender exists
-        if not self.sender == None :
-            s2risFace, _ = self.is_facing_target(self.sender, self.cur_posture[self.receiver][X], self.cur_posture[self.receiver][Y],4)
-            r2sisFace, _ = self.is_facing_target(self.receiver, self.cur_posture[self.sender][X], self.cur_posture[self.sender][Y],4)
+        if not self.sender == None:
+            s2risFace, _ = self.is_facing_target(
+                self.sender, self.cur_posture[self.receiver][X], self.cur_posture[self.receiver][Y], 4)
+            r2sisFace, _ = self.is_facing_target(
+                self.receiver, self.cur_posture[self.sender][X], self.cur_posture[self.sender][Y], 4)
             # if sender and receiver directs each other
-            if s2risFace and r2sisFace :
-                if self.cur_posture[self.receiver][TH] > 0 or self.cur_posture[self.receiver][TH] < -3 :
-                    self.actions(self.receiver,'follow', [self.prev_posture[self.receiver][X], self.prev_posture[self.receiver][Y] - 0.5 * self.field[Y]])
+            if s2risFace and r2sisFace:
+                if self.cur_posture[self.receiver][TH] > 0 or self.cur_posture[self.receiver][TH] < -3:
+                    self.actions(self.receiver, 'follow', [
+                                 self.prev_posture[self.receiver][X], self.prev_posture[self.receiver][Y] - 0.5 * self.field[Y]])
                     return
-                self.actions(self.receiver, 'follow',[self.prev_posture[self.receiver][X], self.prev_posture[self.receiver][Y] + 0.5 * self.field[Y]])
+                self.actions(self.receiver, 'follow', [
+                             self.prev_posture[self.receiver][X], self.prev_posture[self.receiver][Y] + 0.5 * self.field[Y]])
                 return
 
         r_point = self.cur_ball
         # if sender exists
         if not self.sender == None:
             r_point = self.receive_position()
-        receiver_ball_dist = helper.dist(self.cur_ball[X], self.cur_posture[self.receiver][X], self.cur_ball[Y],self.cur_posture[self.receiver][Y])
+        receiver_ball_dist = helper.dist(
+            self.cur_ball[X], self.cur_posture[self.receiver][X], self.cur_ball[Y], self.cur_posture[self.receiver][Y])
         # if ball is close to receiver
-        if receiver_ball_dist > 0.3 * self.field[X] / 2 :
-            self.actions(self.receiver, 'follow', [r_point[X], r_point[Y]],refine=True)
+        if receiver_ball_dist > 0.3 * self.field[X] / 2:
+            self.actions(self.receiver, 'follow', [
+                         r_point[X], r_point[Y]], refine=True)
             return
 
-        r2bisFace, _ = self.is_facing_target(self.receiver, self.cur_ball[X], self.cur_ball[Y], 4)
-        if not r2bisFace :
-            self.actions(self.receiver, 'follow',refine=True)
+        r2bisFace, _ = self.is_facing_target(
+            self.receiver, self.cur_ball[X], self.cur_ball[Y], 4)
+        if not r2bisFace:
+            self.actions(self.receiver, 'follow', refine=True)
             return
         # if receiver is moving to our goal area
-        if self.cur_posture[self.receiver][X] < - 0.8 * self.field[X] / 2 :
-            if self.cur_posture[self.receiver][X] - self.prev_posture[self.receiver][X] < 0 :
+        if self.cur_posture[self.receiver][X] < - 0.8 * self.field[X] / 2:
+            if self.cur_posture[self.receiver][X] - self.prev_posture[self.receiver][X] < 0:
                 self.actions(self.receiver, 'backward')
 
         self.actions(self.receiver, 'dribble')
         return
 
     # let robot with id 'id' execute an action directed by 'mode'
-    def actions(self, id, mode = None, target_pts = None, params = None, refine = False) :
-        if id == None :
+    def actions(self, id, mode=None, target_pts=None, params=None, refine=False):
+        if id == None:
             return
 
         # if the player state is set to 'stop', force the mode to be 'stop'
-        if self.player_state[id] == 'stop' :
+        if self.player_state[id] == 'stop':
             mode = 'stop'
 
-        if mode == None :
+        if mode == None:
             # reset all robot status
-            if self.sender == id :
+            if self.sender == id:
                 self.sender = None
                 self.touch = [False, False, False, False, False]
-            if self.receiver == id :
+            if self.receiver == id:
                 self.receiver = None
             self.player_state[id] = None
             return
-        if mode == 'follow' :
+        if mode == 'follow':
             # let the robot follow the ball
-            if target_pts == None :
+            if target_pts == None:
                 target_pts = self.predict_ball_location(3)
-            if params == None :
+            if params == None:
                 params = [1.0, 3.0, 0.6, False]
-            if refine :
+            if refine:
                 self.set_pos_parameters(id, target_pts, params)
-            self.set_target_position(id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
+            self.set_target_position(
+                id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
             self.player_state[id] = 'follow'
             return
-        if mode == 'dribble' :
+        if mode == 'dribble':
             # let the robot follow the ball but at a faster speed
-            if target_pts == None :
+            if target_pts == None:
                 target_pts = self.cur_ball
-            if params == None :
+            if params == None:
                 params = [1.4, 5.0, 0.8, False]
-            if refine :
+            if refine:
                 self.set_pos_parameters(id, target_pts, params)
-            self.set_target_position(id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
+            self.set_target_position(
+                id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
             self.player_state[id] = 'dribble'
             return
-        if mode == 'kick' :
+        if mode == 'kick':
             # kick the ball
-            if target_pts == None :
+            if target_pts == None:
                 target_pts = self.cur_ball
-            if params == None :
+            if params == None:
                 params = [1.4, 5.0, 0.8, True]
-            if self.end_count == 0 and not self.touch[id] :
-                self.end_count = self.cur_count + 10 # 0.05 * cnt seconds
+            if self.end_count == 0 and not self.touch[id]:
+                self.end_count = self.cur_count + 10  # 0.05 * cnt seconds
             self.player_state[id] = 'kick'
-            if self.touch[id] :
+            if self.touch[id]:
                 self.player_state[id] = 'stop'
-            if not self.touch[id] :
+            if not self.touch[id]:
                 self.touch[id] = self.cur_posture[id][TOUCH]
-            if self.player_state[id] == 'stop' :
+            if self.player_state[id] == 'stop':
                 params = [0.0, 0.0, 0.0, False]
-            self.set_target_position(id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
+            self.set_target_position(
+                id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
             return
-        if mode == 'stop' :
+        if mode == 'stop':
             # stop while counter is on
-            if params == None :
+            if params == None:
                 params = [0.0, 0.0, False]
             self.set_wheel_velocity(id, params[0], params[1], params[2])
-            if self.end_count == 0 :
-                self.end_count = self.cur_count + 5 # 0.05 * cnt seconds
+            if self.end_count == 0:
+                self.end_count = self.cur_count + 5  # 0.05 * cnt seconds
             self.player_state[id] = 'stop'
-            if self.end_count - 1 == self.cur_count :
+            if self.end_count - 1 == self.cur_count:
                 self.player_state[id] = None
             return
-        if mode == 'backward' :
+        if mode == 'backward':
             # retreat from the current position
-            if target_pts == None :
-                target_pts = [self.cur_posture[id][X] + 0.2, self.cur_posture[id][Y]]
-            if params == None :
+            if target_pts == None:
+                target_pts = [self.cur_posture[id]
+                              [X] + 0.2, self.cur_posture[id][Y]]
+            if params == None:
                 params = [1.4, 5.0, 0.8, False]
-            if refine :
+            if refine:
                 self.set_pos_parameters(id, target_pts, params)
-            self.set_target_position(id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
+            self.set_target_position(
+                id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
             self.player_state[id] = 'backward'
             return
-        if mode == 'position' :
+        if mode == 'position':
             # go toward target position
-            self.set_target_position(id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
+            self.set_target_position(
+                id, target_pts[X], target_pts[Y], params[0], params[1], params[2], params[3])
             return
 
-    def set_pos_parameters(self,id,target_pts,params,mult = 1.2):
-        prev_dist = helper.dist(self.prev_posture[id][X],target_pts[X],self.prev_posture[id][Y],target_pts[Y])
-        cur_dist = helper.dist(self.cur_posture[id][X],target_pts[X],self.cur_posture[id][Y],target_pts[Y])
-        if cur_dist > prev_dist - 0.02 :
-            params = [params[0] * mult, params[1] * mult, params[2] * mult, params[3]]
+    def set_pos_parameters(self, id, target_pts, params, mult=1.2):
+        prev_dist = helper.dist(
+            self.prev_posture[id][X], target_pts[X], self.prev_posture[id][Y], target_pts[Y])
+        cur_dist = helper.dist(
+            self.cur_posture[id][X], target_pts[X], self.cur_posture[id][Y], target_pts[Y])
+        if cur_dist > prev_dist - 0.02:
+            params = [params[0] * mult, params[1]
+                      * mult, params[2] * mult, params[3]]
         return params
 
-    def is_facing_target(self, id, x, y, div = 4):
+    def is_facing_target(self, id, x, y, div=4):
         dx = x - self.cur_posture[id][X]
         dy = y - self.cur_posture[id][Y]
         ds = math.sqrt(dx * dx + dy * dy)
-        desired_th = (self.cur_posture[id][TH] if (ds == 0) else math.acos(dx / ds))
+        desired_th = (self.cur_posture[id][TH] if (
+            ds == 0) else math.acos(dx / ds))
 
         theta = self.cur_posture[id][TH]
         if desired_th < 0:
@@ -688,27 +727,29 @@ class Component(ApplicationSession):
         diff_theta = abs(desired_th - theta)
         if diff_theta > math.pi:
             diff_theta = min(diff_theta, math.pi * 2 - diff_theta)
-        if diff_theta < math.pi / div or diff_theta > math.pi * (1 -  1 / div):
+        if diff_theta < math.pi / div or diff_theta > math.pi * (1 - 1 / div):
             return [True, diff_theta]
         return [False, diff_theta]
 
     def receive_position(self):
         step = 5
         ball_receiver_dist = helper.dist(self.cur_ball[X], self.cur_posture[self.receiver][X], self.cur_ball[Y],
-                                             self.cur_posture[self.receiver][Y])
+                                         self.cur_posture[self.receiver][Y])
         prev_ball_receiver_dist = helper.dist(self.prev_ball[X], self.prev_posture[self.receiver][X],
-                                                  self.prev_ball[Y], self.prev_posture[self.receiver][Y])
+                                              self.prev_ball[Y], self.prev_posture[self.receiver][Y])
 
         diff_dist = prev_ball_receiver_dist - ball_receiver_dist
         if diff_dist > 0:
-            step = ball_receiver_dist # diff_dist
+            step = ball_receiver_dist  # diff_dist
 
         step = min(step, 15)
 
         predict_pass_point = self.predict_ball_location(step)
 
-        ball_goal_dist = helper.dist(self.cur_ball[X], self.field[X] / 2, self.cur_ball[Y], 0)
-        prev_ball_goal_dist = helper.dist(self.prev_ball[X], self.field[X] / 2, self.prev_ball[Y], 0)
+        ball_goal_dist = helper.dist(
+            self.cur_ball[X], self.field[X] / 2, self.cur_ball[Y], 0)
+        prev_ball_goal_dist = helper.dist(
+            self.prev_ball[X], self.field[X] / 2, self.prev_ball[Y], 0)
         if ball_goal_dist > prev_ball_goal_dist:
             predict_pass_point[X] = predict_pass_point[X] - 0.15
 
@@ -725,15 +766,20 @@ class Component(ApplicationSession):
         # Move the fuck away
         def gtfo(self, id):
             if id == 0:
-                self.set_target_position(id, -self.field[X]/2. * 0.9, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.set_target_position(
+                    id, -self.field[X]/2. * 0.9, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
             elif id == 1:
-                self.set_target_position(id, -self.field[X]/2. * 0.7, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.set_target_position(
+                    id, -self.field[X]/2. * 0.7, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
             elif id == 2:
-                self.set_target_position(id, -self.field[X]/2. * 0.9, self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.set_target_position(
+                    id, -self.field[X]/2. * 0.9, self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
             elif id == 3:
-                self.set_target_position(id, -self.field[X]/2. * 0.5, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.set_target_position(
+                    id, -self.field[X]/2. * 0.5, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
             else:
-                self.set_target_position(id, -self.field[X]/2. * 0.7, self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.set_target_position(
+                    id, -self.field[X]/2. * 0.7, self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
 
         # initiate empty frame
         if (self.end_of_frame):
@@ -777,8 +823,19 @@ class Component(ApplicationSession):
             self.get_coord()
             self.find_closest_robot()
 
-            for i in range(5):
+            ##############################################################################
+            # Here goes the robot loop
+            for i in range(1,5):
                 gtfo(self, i)
+            print(self.received_frame.time)
+            if self.received_frame.time > 4 and self.received_frame.time < 5:
+                id = 0
+                self.set_wheel_velocity(id, self.max_linear_velocity[id], self.max_linear_velocity[id], False)
+            else:
+                id = 0
+                self.set_wheel_velocity(id, 0, 0, False)
+
+
             set_wheel(self, self.wheels)
 
             ##############################################################################
@@ -813,10 +870,8 @@ if __name__ == '__main__':
         def unicode(s, *_):
             return s
 
-
     def to_unicode(s):
         return unicode(s, "utf-8")
-
 
     parser = argparse.ArgumentParser()
     parser.add_argument("server_ip", type=to_unicode)
