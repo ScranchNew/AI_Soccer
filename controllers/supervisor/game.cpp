@@ -612,6 +612,15 @@ void game::reset(c::robot_formation red_formation, c::robot_formation blue_forma
     robot_ipa = time_ms_;
   }
 
+  for(const auto& team : {T_RED, T_BLUE}) {
+    for(std::size_t id = 0; id < c::NUMBER_OF_ROBOTS; id++) {
+      if (team == T_RED && (id == 3 || id == 4 || id == 2))
+        continue;
+      activeness_[team][id] = false;
+      sv_.send_to_foulzone(team == T_RED, id);
+    }
+  }
+
   stop_robots();
 
   deadlock_time_ = time_ms_;

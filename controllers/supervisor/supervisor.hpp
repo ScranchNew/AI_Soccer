@@ -294,11 +294,20 @@ public:
 
     const auto f = half_passed_ ? -1 : 1;
     const auto s = is_red ? 1 : -1;
+    
+    /*
     const double translation[] = {f * c::ROBOT_FORMATION[c::FORMATION_DEFAULT][id][0] * s,
                                   c::ROBOT_HEIGHT[id] / 2,
                                   f * -c::ROBOT_FORMATION[c::FORMATION_DEFAULT][id][1] * s};
     const double rotation[] = { 0, 1, 0,
                                 (half_passed_ ? c::PI : 0.) + c::ROBOT_FORMATION[c::FORMATION_DEFAULT][id][2] + (is_red ? 0. : c::PI) - c::PI / 2 };
+    */
+    const double translation[] = {f * c::ROBOT_FOUL_POSTURE[id][0] * s,
+                                  c::ROBOT_HEIGHT[id] / 2,
+                                  f * -c::ROBOT_FOUL_POSTURE[id][1] * s};
+    const double rotation[] = { 0, 1, 0,
+                                (half_passed_ ? c::PI : 0.) + c::ROBOT_FOUL_POSTURE[id][2] + (is_red ? 0. : c::PI) - c::PI / 2 };
+
 
     const double al = pn->getField("axleLength")->getSFFloat();
     const double h = pn->getField("height")->getSFFloat();
