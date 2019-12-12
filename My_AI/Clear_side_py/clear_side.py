@@ -19,6 +19,48 @@ import numpy as np
 
 import helper
 
+import copy
+
+import fuzzylogic as fuzzy
+
+from fuzzylogic.classes import Domain
+import fuzzylogic.functions as ff
+
+DEGTORAD = math.pi/180.0
+RADTODEG = 180.0/math.pi
+
+# Defining the main fuzzy domains
+Ang = Domain("diff_theta", -180, 180, res=1)
+Ang.zero = ff.triangular(-3,3)
+
+Ang.p_small = ff.trapezoid(0, 3, 5, 10)
+Ang.n_small = ff.trapezoid(-10,-5,-3,0)
+
+Ang.small = Ang.p_small | Ang.n_small
+
+Ang.p_med = ff.trapezoid(5, 10, 40, 50)
+Ang.n_med = ff.trapezoid(-50,-40,-10,-5)
+
+Ang.med = Ang.p_med | Ang.n_med
+
+Ang.p_big = ff.trapezoid(40, 50, 80, 100)
+Ang.n_big = ff.trapezoid(-100, -80, -50, -40)
+
+Ang.big = Ang.p_big | Ang.n_big
+
+Ang.p_large = ff.trapezoid(80, 100, 180, 190)
+Ang.n_large = ff.trapezoid(-190, -180, -100, -80)
+
+Ang.large = Ang.p_large | Ang.n_large
+
+Dist = Domain("distance", 0, 8.0, res =0.05)
+Dist.zero = ff.S(0, 0.05)
+Dist.small = ff.trapezoid(0, 0.05, 0.2, 0.25)
+Dist.med = ff.trapezoid(0.2, 0.25, 0.9, 1.1)
+Dist.big = ff.trapezoid(0.9, 1.1, 3.5, 4.5)
+Dist.large = ff.trapezoid(3.5, 4.5, 8.0, 9.0)
+
+
 # reset_reason
 NONE = 0
 GAME_START = 1
@@ -139,7 +181,7 @@ class Component(ApplicationSession):
 
             self.robot_size = info['robot_size']
             # self.robot_height = info['robot_height']
-            # self.axle_length = info['axle_length']
+            self.axle_length = info['axle_length']
             # self.robot_body_mass = info['robot_body_mass']
 
             # self.wheel_radius = info['wheel_radius']
@@ -197,7 +239,7 @@ class Component(ApplicationSession):
 
     # set the left and right wheel velocities of robot with id 'id'
     # 'max_velocity' scales the velocities up to the point where at least one of wheel is operating at max velocity
-    def set_wheel_velocity(self, id, left_wheel, right_wheel, max_velocity):
+    def set_wheel_velocity(self, id, left_wheel, right_wheel, max_velocity = False):
         multiplier = 1
 
         # wheel velocities need to be scaled so that none of wheels exceed the maximum velocity available
@@ -284,6 +326,132 @@ class Component(ApplicationSession):
                                     sign * scale * (mult_lin * (
                                         1 / (1 + math.exp(-3 * d_e)) - damping) + mult_ang * ka * d_th),
                                     max_velocity)
+
+    # Turn right in a circle with radius at speed
+    def speed_turn_circle(self, id, radius, speed=1.0):
+
+        if speed == 0.0:
+            speed = 0.001
+
+        half_axle = self.axle_length[id]/2.0
+
+        v_right = (1 - half_axle / radius) * speed
+        v_left  = (1 + half_axle / radius) * speed
+
+        if radius == 0:
+            v_right = speed
+            v_left  = speed
+
+        return(v_left, v_right)
+    
+
+    def move_turn_circle(self, id, radius, speed=1.0, max_velocity=False):
+        
+        v_left, v_right = self.speed_turn_circle(id, radius, speed, max_velocity)
+
+        self.set_wheel_velocity(id, v_left, v_right, max_velocity)
+
+    def limit_speed_to_ang_vel(self, id, v_left, v_right, ang_vel):
+        if (abs(v_left - v_right)/self.axle_length[id]) > ang_vel:
+            div = abs(v_left - v_right) / (self.axle_length[id] * ang_vel)
+            v_left /= div
+            v_right /= div
+        
+        return(v_left, v_right)
+
+    # Moves to given coordinates at a given top-speed. Uses circle-turns if possible and does not care about robot-orientation
+    def move_to_circles(self, id, x, y, radius=0.5, speed=1.0, goal_speed=0.0, goal_angle=None, max_velocity = False, debug = False):
+        if max_velocity:
+            speed = self.max_linear_velocity[id]
+        
+        max_turn_d_th = 180*DEGTORAD
+
+        d_t = self.received_frame.time - self.previous_frame.time
+        
+        my_x = self.cur_posture[id][X]
+        my_y = self.cur_posture[id][Y]
+
+        last_x = self.prev_posture[id][X]
+        last_y = self.prev_posture[id][Y]
+
+        dist = helper.dist(my_x, x, my_y, y)
+        last_dist = helper.dist(last_x, x, last_y, y)
+        d_dist = (dist - last_dist)/d_t
+
+        angle_to_target = self.direction_angle(id, x, y)
+        my_angle = self.cur_posture[id][TH]
+        last_angle = self.prev_posture[id][TH]
+
+        diff_theta = helper.clamp(my_angle - angle_to_target) # right-facing angle to turn to target
+        d_theta = (helper.clamp(my_angle - last_angle)) / d_t
+
+        direction = 1.0
+
+        if abs(diff_theta) > math.pi/2:  # drive backwards if easier
+            direction = -1.0
+            diff_theta = helper.clamp(diff_theta-math.pi)
+
+        if goal_angle == None:
+            # just move to the target position. Orientation is not important (Only one turn-circle)
+
+            f_dist = Dist(dist)
+
+            # Speed
+            speed_far =    speed
+            speed_small =  (speed + goal_speed)/2
+            speed_zero =   goal_speed
+
+            # Defuzzy Speed
+            speed = f_dist['zero'] * speed_zero + f_dist['small'] * speed_small + (f_dist['med'] + f_dist['big'] + f_dist['large']) * speed_far
+
+            # Fuzzy diff_theta
+            # The fuzzy domain Ang is in ° for convenience
+
+            f_d_theta = Ang(diff_theta*RADTODEG)
+
+            # In the turn-circle (meaning while diff_theta is not small)
+            max_circ_radius = dist/4.0*math.cos(diff_theta)
+            circ_rad = min(max_circ_radius, radius)
+            if diff_theta < 0.0:
+                circ_rad *= -1.0
+
+            circ_l, circ_r = self.speed_turn_circle(id, circ_rad, speed*direction)
+
+            # On the straight (when diff_theta is small)
+            straight_rad = dist/(2.0*math.sin(diff_theta))
+
+            stra_l, stra_r = self.speed_turn_circle(id, straight_rad, speed*direction)
+
+            # When angle is zero
+            zero_l, zero_r = speed * direction, speed * direction
+
+            # Defuzzy straight and circle radius
+            used_l  = f_d_theta['zero'] * zero_l + f_d_theta['small'] * stra_l + (f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large']) * circ_l
+            used_r  = f_d_theta['zero'] * zero_r + f_d_theta['small'] * stra_r + (f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large']) * circ_r
+
+            used_l, used_r = self.limit_speed_to_ang_vel(id, used_l, used_r, min(max_turn_d_th, abs(4*diff_theta + 0.05*d_theta)))
+
+            used_d_th = (used_l - used_r) / self.axle_length[id]
+
+            if debug:
+                print("__________________________________________")
+
+                print(f"diff_theta:{diff_theta*RADTODEG}")
+                print(f"d_theta:{d_theta*RADTODEG}")
+                print(f"th_zero:{f_d_theta['zero']}, th_small:{f_d_theta['small']}, th_big:{(f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large'])}")
+                print(f"dist:{dist}")
+                print(f"d_zero:{f_dist['zero']}, d_small:{f_dist['small']}, d_big:{(f_dist['med'] + f_dist['big'] + f_dist['large'])}")
+                print(f"used_l:{used_l}")
+                print(f"used_r:{used_r}")
+                print(f"used_d_th:{used_d_th*RADTODEG}")
+                print(f"direction:{direction}")
+
+            self.set_wheel_velocity(id, used_l, used_r)
+        else:
+            assert type(goal_angle) == type(1.0)
+            # move to the target position at a given orientation (Two turn-circles)
+            pass
+
 
     # copy coordinates from frames to different variables just for convenience
     def get_coord(self):
@@ -766,20 +934,20 @@ class Component(ApplicationSession):
         # Move the fuck away
         def gtfo(self, id):
             if id == 0:
-                self.set_target_position(
-                    id, -self.field[X]/2. * 0.9, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.move_to_circles(
+                    id, -self.field[X]/2. * 0.9, self.field[Y]/2. * 0.9, max_velocity=True)
             elif id == 1:
-                self.set_target_position(
-                    id, -self.field[X]/2. * 0.7, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.move_to_circles(
+                    id, -self.field[X]/2. * 0.7, self.field[Y]/2. * 0.9, max_velocity=True)
             elif id == 2:
-                self.set_target_position(
-                    id, -self.field[X]/2. * 0.9, self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.move_to_circles(
+                    id, -self.field[X]/2. * 0.9, -self.field[Y]/2. * 0.9, max_velocity=True)
             elif id == 3:
-                self.set_target_position(
-                    id, -self.field[X]/2. * 0.5, -self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.move_to_circles(
+                    id, -self.field[X]/2. * 0.5, self.field[Y]/2. * 0.9, max_velocity=True)
             else:
-                self.set_target_position(
-                    id, -self.field[X]/2. * 0.7, self.field[Y]/2. * 0.9, 1.4, 5.0, 0.8, False)
+                self.move_to_circles(
+                    id, -self.field[X]/2. * 0.7, -self.field[Y]/2. * 0.9, max_velocity=True)
 
         # initiate empty frame
         if (self.end_of_frame):
@@ -818,25 +986,22 @@ class Component(ApplicationSession):
             # self.image.ImageBuffer
 
             if (self.received_frame.reset_reason != NONE):
-                self.previous_frame = self.received_frame
+                self.previous_frame = copy.deepcopy(self.received_frame)
 
             self.get_coord()
             self.find_closest_robot()
 
             ##############################################################################
-            # Here goes the robot loop
-            for i in range(1,5):
-                gtfo(self, i)
-            print(self.received_frame.time)
-            if self.received_frame.time > 4 and self.received_frame.time < 5:
+            if (self.received_frame.game_state == STATE_DEFAULT):
+                # robot functions in STATE_DEFAULT
+                for i in range(1,5):
+                    gtfo(self, i)
+                
                 id = 0
-                self.set_wheel_velocity(id, self.max_linear_velocity[id], self.max_linear_velocity[id], False)
-            else:
-                id = 0
-                self.set_wheel_velocity(id, 0, 0, False)
+                self.move_to_circles(id, -self.field[X]/2*0.6, 0, max_velocity=True, debug=True)
+                # self.set_wheel_velocity(id, self.max_linear_velocity[id], self.max_linear_velocity[id], False)
 
-
-            set_wheel(self, self.wheels)
+                set_wheel(self, self.wheels)
 
             ##############################################################################
             if (self.received_frame.reset_reason == GAME_END):
@@ -854,7 +1019,7 @@ class Component(ApplicationSession):
             ##############################################################################
 
             self.end_of_frame = False
-            self.previous_frame = self.received_frame
+            self.previous_frame = copy.deepcopy(self.received_frame)
 
     def onDisconnect(self):
         if reactor.running:
