@@ -19,6 +19,8 @@ import numpy as np
 
 import helper
 
+import copy
+
 # reset_reason
 NONE = 0
 GAME_START = 1
@@ -999,7 +1001,7 @@ class Component(ApplicationSession):
             # self.image.ImageBuffer
 
             if (self.received_frame.reset_reason != NONE):
-                self.previous_frame = self.received_frame
+                self.previous_frame = copy.deepcopy(self.received_frame)
 
             self.get_coord()
             self.find_closest_robot()
@@ -1079,7 +1081,7 @@ class Component(ApplicationSession):
             ##############################################################################
 
             self.end_of_frame = False
-            self.previous_frame = self.received_frame
+            self.previous_frame = copy.deepcopy(self.received_frame)
 
     def onDisconnect(self):
         if reactor.running:
