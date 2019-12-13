@@ -360,13 +360,15 @@ class Component(ApplicationSession):
         return(v_left, v_right)
 
     # Moves to given coordinates at a given top-speed. Uses circle-turns if possible and does not care about robot-orientation
-    def move_to_circles(self, id, x, y, radius=0.5, speed=1.0, goal_speed=0.0, goal_angle=None, max_velocity = False, debug = False):
+    def move_to_circles(self, id, x, y, radius=0.5, speed=1.0, goal_speed=0.0, goal_angle=None, max_velocity = False, kick=True, debug = False):
         if max_velocity:
             speed = self.max_linear_velocity[id]
         
-        max_turn_d_th = 180*DEGTORAD
+        max_turn_d_th = 480*DEGTORAD
 
         d_t = self.received_frame.time - self.previous_frame.time
+        if d_t == 0.0:
+            d_t = 0.2
         
         my_x = self.cur_posture[id][X]
         my_y = self.cur_posture[id][Y]
@@ -386,71 +388,135 @@ class Component(ApplicationSession):
         d_theta = (helper.clamp(my_angle - last_angle)) / d_t
 
         direction = 1.0
-
         if abs(diff_theta) > math.pi/2:  # drive backwards if easier
             direction = -1.0
             diff_theta = helper.clamp(diff_theta-math.pi)
 
-        if goal_angle == None:
-            # just move to the target position. Orientation is not important (Only one turn-circle)
-
-            f_dist = Dist(dist)
-
-            # Speed
-            speed_far =    speed
-            speed_small =  (speed + goal_speed)/2
-            speed_zero =   goal_speed
-
-            # Defuzzy Speed
-            speed = f_dist['zero'] * speed_zero + f_dist['small'] * speed_small + (f_dist['med'] + f_dist['big'] + f_dist['large']) * speed_far
-
-            # Fuzzy diff_theta
-            # The fuzzy domain Ang is in ° for convenience
-
-            f_d_theta = Ang(diff_theta*RADTODEG)
-
-            # In the turn-circle (meaning while diff_theta is not small)
-            max_circ_radius = dist/4.0*math.cos(diff_theta)
-            circ_rad = min(max_circ_radius, radius)
-            if diff_theta < 0.0:
-                circ_rad *= -1.0
-
-            circ_l, circ_r = self.speed_turn_circle(id, circ_rad, speed*direction)
-
-            # On the straight (when diff_theta is small)
-            straight_rad = dist/(2.0*math.sin(diff_theta))
-
-            stra_l, stra_r = self.speed_turn_circle(id, straight_rad, speed*direction)
-
-            # When angle is zero
-            zero_l, zero_r = speed * direction, speed * direction
-
-            # Defuzzy straight and circle radius
-            used_l  = f_d_theta['zero'] * zero_l + f_d_theta['small'] * stra_l + (f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large']) * circ_l
-            used_r  = f_d_theta['zero'] * zero_r + f_d_theta['small'] * stra_r + (f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large']) * circ_r
-
-            used_l, used_r = self.limit_speed_to_ang_vel(id, used_l, used_r, min(max_turn_d_th, abs(4*diff_theta + 0.05*d_theta)))
-
-            used_d_th = (used_l - used_r) / self.axle_length[id]
-
-            if debug:
-                print("__________________________________________")
-
-                print(f"diff_theta:{diff_theta*RADTODEG}")
-                print(f"d_theta:{d_theta*RADTODEG}")
-                print(f"th_zero:{f_d_theta['zero']}, th_small:{f_d_theta['small']}, th_big:{(f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large'])}")
-                print(f"dist:{dist}")
-                print(f"d_zero:{f_dist['zero']}, d_small:{f_dist['small']}, d_big:{(f_dist['med'] + f_dist['big'] + f_dist['large'])}")
-                print(f"used_l:{used_l}")
-                print(f"used_r:{used_r}")
-                print(f"used_d_th:{used_d_th*RADTODEG}")
-                print(f"direction:{direction}")
-
-            self.set_wheel_velocity(id, used_l, used_r)
-        else:
-            assert type(goal_angle) == type(1.0)
+        if goal_angle != None:
+            assert type(goal_angle) == type(1.0) or type(goal_angle) == type(1)
             # move to the target position at a given orientation (Two turn-circles)
-            pass
+
+            dir_x = math.cos(goal_angle)
+            dir_y = math.sin(goal_angle)
+
+            max_corridor_dist = self.axle_length[id]/2 + math.sin(3*DEGTORAD)*dist # Cone shaped approach corridor
+
+            tar_to_bot_x = my_x - x
+            tar_to_bot_y = my_y - y
+
+            corridor_dist = dir_x*tar_to_bot_y - dir_y*tar_to_bot_x
+            correct_direction = (dir_x*tar_to_bot_x + dir_y*tar_to_bot_y) >= 0.0
+
+            if abs(corridor_dist) > max_corridor_dist or not correct_direction:
+                # If outside the corridor
+                x_int_goal = x + dir_x*radius
+                y_int_goal = y + dir_y*radius
+
+                int_dist = helper.dist(my_x, x_int_goal, my_y, y_int_goal)
+
+                if int_dist > dist:
+                    x_temp_goal = tar_to_bot_y * corridor_dist
+                    y_temp_goal = -tar_to_bot_x * corridor_dist
+
+                    l_temp = math.sqrt(x_temp_goal ** 2 + y_temp_goal ** 2)
+                    x_temp_goal /= l_temp
+                    y_temp_goal /= l_temp
+
+                    x_temp_goal = x + x_temp_goal
+                    y_temp_goal = y + y_temp_goal
+
+                    self.move_to_circles(id, x_temp_goal, y_temp_goal, radius, speed, goal_speed=speed*0.99, max_velocity=max_velocity, debug=debug)
+                    return
+                else:
+                    self.move_to_circles(id, x_int_goal, y_int_goal, radius, speed, goal_speed=speed*0.99, max_velocity=max_velocity, debug=debug)
+                    return
+
+                
+        if ((abs(diff_theta)*RADTODEG < 2 and dist < radius) or (self.player_state[id] == 'kick')) and d_dist < 0.0 and goal_speed > speed:
+            # If inside the corridor and close to the target
+            # Kick
+            print("kicking")
+
+            self.player_state[id] = 'kick'
+            targ_speed = dist/radius * speed + (1-dist/radius) * goal_speed
+
+            self.set_wheel_velocity(id, targ_speed*direction, targ_speed*direction)
+            return
+        else:
+            self.player_state[id] = None
+
+        # just move to the target position. Orientation is not important (Only one turn-circle)
+
+        f_dist = Dist(dist)
+
+        # Speed
+        speed_far =    speed
+        speed_small =  (speed + goal_speed)/2
+        speed_zero =   goal_speed
+
+        # Defuzzy Speed
+        speed = f_dist['zero'] * speed_zero + f_dist['small'] * speed_small + (f_dist['med'] + f_dist['big'] + f_dist['large']) * speed_far
+
+        # Fuzzy diff_theta
+        # The fuzzy domain Ang is in ° for convenience
+
+        f_d_theta = Ang(diff_theta*RADTODEG)
+
+        # Use p-d control for the angular velocity
+        if id == 0:
+            p = 1
+            d = 0.12
+        elif id == 1 or id == 2:
+            p = 1
+            d = 0.12
+        else:
+            p = 1
+            d = 0.12
+
+        p_d = p*diff_theta + d*d_theta
+
+        # In the turn-circle (meaning while diff_theta is not small)
+        max_circ_radius = dist/4.0*math.cos(diff_theta)
+        circ_rad = min(max_circ_radius, radius)
+        #circ_rad = max_circ_radius
+        if p_d < 0.0:
+            circ_rad *= -1.0
+
+        circ_l, circ_r = self.speed_turn_circle(id, circ_rad*direction, speed*direction)
+
+        # On the straight (when diff_theta is small)
+        straight_rad = 1/(3*math.sin(p_d))
+        if p_d < 0.0:
+            straight_rad *= -1.0
+
+        stra_l, stra_r = self.speed_turn_circle(id, straight_rad*direction, speed*direction)
+
+        # When angle is zero
+        zero_l, zero_r = speed * direction, speed * direction
+
+        # Defuzzy straight and circle radius
+        used_l  = f_d_theta['zero'] * zero_l + f_d_theta['small'] * stra_l + (f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large']) * circ_l
+        used_r  = f_d_theta['zero'] * zero_r + f_d_theta['small'] * stra_r + (f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large']) * circ_r
+
+        used_l, used_r = self.limit_speed_to_ang_vel(id, used_l, used_r, min(max_turn_d_th, abs(4*diff_theta + 0*d_theta)))
+
+        used_d_th = (used_l - used_r) / self.axle_length[id]
+
+        if debug:
+            print("__________________________________________")
+            print(f"id:{id}")
+            print(f"diff_theta:{diff_theta*RADTODEG}")
+            print(f"d_theta:{d_theta*RADTODEG}")
+            print(f"th_zero:{f_d_theta['zero']}, th_small:{f_d_theta['small']}, th_big:{(f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large'])}")
+            print(f"dist:{dist}, d_dist:{d_dist}")
+            print(f"d_zero:{f_dist['zero']}, d_small:{f_dist['small']}, d_big:{(f_dist['med'] + f_dist['big'] + f_dist['large'])}")
+            print(f"speed:{speed}")
+            print(f"used_l:{used_l}, used_r:{used_r}")
+            print(f"used_speed:{(used_l + used_r)/2.0}")
+            print(f"used_d_th:{used_d_th*RADTODEG}")
+            print(f"direction:{direction}")
+
+        self.set_wheel_velocity(id, used_l, used_r)
 
 
     # copy coordinates from frames to different variables just for convenience
@@ -506,6 +572,20 @@ class Component(ApplicationSession):
         dx = self.cur_ball[X] - self.prev_ball[X]
         dy = self.cur_ball[Y] - self.prev_ball[Y]
         return [self.cur_ball[X] + steps * dx, self.cur_ball[Y] + steps * dy]
+
+    # predict, where the ball will cross the given line (in y direction)
+    def predict_goal_cross(self, x_keeper):
+        dx = self.cur_ball[X] - self.prev_ball[X]
+        dy = self.cur_ball[Y] - self.prev_ball[Y]
+
+        if dx >= -0.005:
+            y_res = 0
+        else:
+            mult = (self.cur_ball[X] - x_keeper) / dx
+            y_res = self.cur_ball[Y] - dy * mult
+
+        print(f"y_res:{y_res}")
+        return(y_res)
 
     # let the robot face toward specific direction
     def face_specific_position(self, id, x, y):
@@ -935,19 +1015,19 @@ class Component(ApplicationSession):
         def gtfo(self, id):
             if id == 0:
                 self.move_to_circles(
-                    id, -self.field[X]/2. * 0.9, self.field[Y]/2. * 0.9, max_velocity=True)
+                    id, -self.field[X]/2. * 0.9, self.field[Y]/2. * 0.9, goal_speed=3.0, max_velocity=False)
             elif id == 1:
                 self.move_to_circles(
-                    id, -self.field[X]/2. * 0.7, self.field[Y]/2. * 0.9, max_velocity=True)
+                    id, -self.field[X]/2. * 0.7, self.field[Y]/2. * 0.9, goal_speed=3.0, max_velocity=False)
             elif id == 2:
                 self.move_to_circles(
-                    id, -self.field[X]/2. * 0.9, -self.field[Y]/2. * 0.9, max_velocity=True)
+                    id, -self.field[X]/2. * 0.9, -self.field[Y]/2. * 0.9, goal_speed=3.0, max_velocity=False)
             elif id == 3:
                 self.move_to_circles(
-                    id, -self.field[X]/2. * 0.5, self.field[Y]/2. * 0.9, max_velocity=True)
+                    id, -self.field[X]/2. * 0.5, self.field[Y]/2. * 0.9, goal_speed=3.0, max_velocity=False)
             else:
                 self.move_to_circles(
-                    id, -self.field[X]/2. * 0.7, -self.field[Y]/2. * 0.9, max_velocity=True)
+                    id, -self.field[X]/2. * 0.7, -self.field[Y]/2. * 0.9, goal_speed=3.0, max_velocity=False)
 
         # initiate empty frame
         if (self.end_of_frame):
@@ -991,15 +1071,26 @@ class Component(ApplicationSession):
             self.get_coord()
             self.find_closest_robot()
 
+            goal_x = -self.field[X]/2.0 + 0.25
+
+            pred_y = self.predict_goal_cross(goal_x)
+
+            goal_y = max(-0.6, min(0.6, pred_y))
+
             ##############################################################################
             if (self.received_frame.game_state == STATE_DEFAULT):
                 # robot functions in STATE_DEFAULT
                 for i in range(1,5):
                     gtfo(self, i)
-                
+
                 id = 0
-                self.move_to_circles(id, -self.field[X]/2*0.6, 0, max_velocity=True, debug=True)
-                # self.set_wheel_velocity(id, self.max_linear_velocity[id], self.max_linear_velocity[id], False)
+                self.move_to_circles(id, goal_x, goal_y, speed=1.5, goal_speed=0, max_velocity=True, debug=False)
+                
+                ang_goal_to_ball = math.atan(self.cur_ball[Y]/ (self.cur_ball[X]-self.field[X]/2.0))
+                print(ang_goal_to_ball)
+
+                for id in range(1,5):
+                    self.move_to_circles(id, self.cur_ball[X], self.cur_ball[Y], speed=1.5, goal_speed=3, goal_angle=math.pi+ang_goal_to_ball)
 
                 set_wheel(self, self.wheels)
 
