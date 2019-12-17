@@ -23,3 +23,9 @@ def trim_radian(rad):
     while(adj_rad < -math.pi):
         adj_rad += 2*math.pi
     return adj_rad
+
+# clamps a value between two values in a way like modulo does
+# Useful for making sure an angle is between -pi and pi
+def clamp(value, min_ = -math.pi, max_ = math.pi):
+    modded = (value - min_)%(max_ - min_)
+    return modded + min_

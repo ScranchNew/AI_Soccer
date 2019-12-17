@@ -5,12 +5,12 @@
   },
   "team_a": {
     "name": "teamA",
-    "executable": "examples/player_rulebased-A_py/player_rulebased-A.py",
+    "executable": "My_AI/My_rules_py/my_rules.py",
     "datapath": "examples/team_a_data"
   },
   "team_b": {
     "name": "teamB",
-    "executable": "examples/player_rulebased-B_py/player_rulebased-B.py",
+    "executable": "examples/player_rulebased-A_py/player_rulebased-A.py",
     "datapath": "examples/team_b_data"
   },
   "commentator": {

@@ -365,6 +365,7 @@ class Component(ApplicationSession):
             speed = self.max_linear_velocity[id]
         
         max_turn_d_th = 480*DEGTORAD
+        min_turn_d_th = 90*DEGTORAD
 
         d_t = self.received_frame.time - self.previous_frame.time
         if d_t == 0.0:
@@ -399,10 +400,25 @@ class Component(ApplicationSession):
             dir_x = math.cos(goal_angle)
             dir_y = math.sin(goal_angle)
 
+            bot_dir_x = math.cos(my_angle)
+            bot_dir_y = math.sin(my_angle)
+
             max_corridor_dist = self.axle_length[id]/2 + math.sin(3*DEGTORAD)*dist # Cone shaped approach corridor
 
             tar_to_bot_x = my_x - x
             tar_to_bot_y = my_y - y
+
+            intersect_dist_tar = (bot_dir_x*tar_to_bot_x + bot_dir_y*tar_to_bot_y) / (bot_dir_x*dir_x + bot_dir_y*dir_y)
+            intersect_dist_bot = -(dir_x*tar_to_bot_x + dir_y*tar_to_bot_y) / (bot_dir_x*dir_x + bot_dir_y*dir_y)
+
+            rel_angle = goal_angle - my_angle
+            turn_radius = intersect_dist_tar * math.tan(rel_angle/2.0)
+
+            if debug:
+                print(f"int_d_ball: {intersect_dist_tar}")
+                print(f"int_d_bot : {intersect_dist_bot}")
+                print(f"rel_angle : {rel_angle}")
+                print(f"turn_rad  : {turn_radius}")
 
             corridor_dist = dir_x*tar_to_bot_y - dir_y*tar_to_bot_x
             correct_direction = (dir_x*tar_to_bot_x + dir_y*tar_to_bot_y) >= 0.0
@@ -435,7 +451,7 @@ class Component(ApplicationSession):
         if ((abs(diff_theta)*RADTODEG < 2 and dist < radius) or (self.player_state[id] == 'kick')) and d_dist < 0.0 and goal_speed > speed:
             # If inside the corridor and close to the target
             # Kick
-            print("kicking")
+            #print("kicking")
 
             self.player_state[id] = 'kick'
             targ_speed = dist/radius * speed + (1-dist/radius) * goal_speed
@@ -498,7 +514,7 @@ class Component(ApplicationSession):
         used_l  = f_d_theta['zero'] * zero_l + f_d_theta['small'] * stra_l + (f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large']) * circ_l
         used_r  = f_d_theta['zero'] * zero_r + f_d_theta['small'] * stra_r + (f_d_theta['med'] + f_d_theta['big'] +f_d_theta['large']) * circ_r
 
-        used_l, used_r = self.limit_speed_to_ang_vel(id, used_l, used_r, min(max_turn_d_th, abs(4*diff_theta + 0*d_theta)))
+        used_l, used_r = self.limit_speed_to_ang_vel(id, used_l, used_r, min(max_turn_d_th, max(abs(8*diff_theta + 0.05*d_theta), min_turn_d_th)))
 
         used_d_th = (used_l - used_r) / self.axle_length[id]
 
@@ -1083,14 +1099,14 @@ class Component(ApplicationSession):
                 for i in range(1,5):
                     gtfo(self, i)
 
-                id = 0
+                id = 0id
                 self.move_to_circles(id, goal_x, goal_y, speed=1.5, goal_speed=0, max_velocity=True, debug=False)
                 
                 ang_goal_to_ball = math.atan(self.cur_ball[Y]/ (self.cur_ball[X]-self.field[X]/2.0))
                 print(ang_goal_to_ball)
 
-                for id in range(1,5):
-                    self.move_to_circles(id, self.cur_ball[X], self.cur_ball[Y], speed=1.5, goal_speed=3, goal_angle=math.pi+ang_goal_to_ball)
+                for id in [1]:
+                    self.move_to_circles(id, self.cur_ball[X], self.cur_ball[Y], speed=2, goal_speed=3, goal_angle=math.pi+ang_goal_to_ball)
 
                 set_wheel(self, self.wheels)
 
